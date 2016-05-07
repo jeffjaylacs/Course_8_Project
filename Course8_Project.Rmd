@@ -1,0 +1,102 @@
+---
+title: "Practical Machine Learning Course Project"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+### Synopsis
+The project uses data gathered from 6 participants who were asked to perfom one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions.  Accelerometers were placed on the belt, forearm, arm, and dumbell of each participant.  The manner in which each exercise was performed was categorized into the following classes as detailed below:  
+* Class A -- performed according to the specification  
+* Class B -- throwing the elbows to the front  
+* Class C -- lifting the dumbbell only halfway  
+* Class D -- lowering the dumbbell only halfway  
+* Class E -- throwing the hips to the front  
+  
+A model was then developed to predict how well a participant executes a particular excercise using the classes listed above.  
+Reference: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
+
+### Exploratory Data Analysis
+
+```{r, warning=FALSE}
+## First load the necessary libraries
+library(caret)
+
+## Download the test and train data sets if not already done
+if(!file.exists("Course8/pml-training.csv")){
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    filename <- "Course8/pml-training.csv"
+    download.file(url, filename)
+    }
+
+if(!file.exists("Course8/pml-testing.csv")){
+    url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    filename <- "Course8/pml-testing.csv"
+    download.file(url, filename)
+    }
+```
+
+Load the train and test sets. Note that some missing values in the csv file are simply empty cell values, whereas others are "NA", so they are both specified in the na.strings paramter in the read.csv function below.
+
+```{r}
+train_raw <- read.csv("Course8/pml-training.csv", header=TRUE, stringsAsFactors = TRUE, na.strings = c(NA,""))
+test_raw <- read.csv("Course8/pml-testing.csv", header=TRUE, stringsAsFactors = TRUE, na.strings = c(NA,""))
+```
+After doing some initial exploratory analysis of the train data set, it can be seen that there are several columns where over 95% of the values are missing.  Remove those columns from the training data since they will not be valuable for building a predictive model.
+
+```{r}
+training <- train_raw[ ,(colSums(is.na(train_raw))/nrow(train_raw)<0.95)]
+```
+
+Now get rid of the columns used to identify observations (e.g. timestamps) that aren't useful for building the model
+
+```{r}
+training[c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window')] <- list(NULL)
+
+```
+
+### Model Building
+Fit a Random Forests model to the training data.  
+Use trainControl() to set the cross validation method to "cv".
+```{r}
+modfit <- train(classe ~ ., method="rf", data=training, trControl=trainControl(method="cv"), number=3)
+```
+
+The model is described below:
+```{r}
+modfit
+```
+
+Predict "classe" for the 20 observations in the test data set
+```{r}
+pred <- predict(modfit, test_raw)
+```
+
+The most important variables are listed below:
+```{r}
+varImp(modfit)
+
+```
+
+Given the high importance of the top 7 variables, re-fit the model using only those variables
+```{r}
+modfit2 <- train(classe ~ roll_belt + pitch_forearm + yaw_belt + pitch_belt + magnet_dumbbell_y + magnet_dumbbell_z + roll_forearm, method="rf", data=training, trControl=trainControl(method="cv"), number=3)
+```
+
+Predict "classe" for the 20 observations in the test data set using this simpler model
+```{r}
+pred2 <- predict(modfit2, test_raw)
+pred_compare <- (pred == pred2)
+pred_compare
+
+```
+The results in the vector above show that both models predict the same classe for each test observation
+
+This simpler model is described below:
+```{r}
+modfit2
+modfit2$finalModel
+```
+### Conclusion
+This simpler model (modfit2) is still very accurate with an out of sample error rate of less than 1%.  Fitting the model with fewer features requires much less processing time, and the number of input variables randomly chosen at each split (mtry) is reasonable as well.  The simpler model accurately predicted all 20 test cases, and should be the final model selected.
